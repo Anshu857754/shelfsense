@@ -17,10 +17,10 @@ def test_health():
     assert response.json() == {"status": "ok"}
 
 
-def test_root_redirects_to_docs():
-    response = client.get("/", follow_redirects=False)
-    assert response.status_code in (302, 307)
-    assert response.headers["location"] == "/docs"
+def test_root_serves_the_website():
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "Audit a shelf" in response.text
 
 
 def test_describe_rejects_non_image():

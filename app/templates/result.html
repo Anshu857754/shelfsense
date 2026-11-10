@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Audit result - ShelfSense{% endblock %}
+{% block content %}
+{% set s = audit.score %}
+{% set level = 'good' if s >= 85 else ('ok' if s >= 60 else 'bad') %}
+
+<section class="card hero">
+  <div class="ring {{ level }}" style="--score: {{ s }}">
+    <div class="inner"><span class="num">{{ s }}%</span><span class="lbl">compliance</span></div>
+  </div>
+  <div>
+    <h1>Audit result</h1>
+    <p class="muted">Model: <code>{{ model }}</code></p>
+    <p>
+      {% if audit.actions %}
+        <strong>{{ audit.actions|length }}</strong> action{{ '' if audit.actions|length == 1 else 's' }} needed.
+      {% else %}
+        The shelf matches the planogram. Nothing to fix.
+      {% endif %}
+    </p>
+    <a class="button" href="/">Audit another shelf</a>
+  </div>
+</section>
+
+{% if audit.actions %}
+<section class="card">
+  <h2>What to do</h2>
+  <ul class="actions">
+    {% for a in audit.actions %}<li>{{ a }}</li>{% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>Score by row</h2>
+  <table>
+    <thead><tr><th>Row</th><th>Expected facings</th><th>Correct facings</th><th>Row score</th></tr></thead>
+    <tbody>
+    {% for r in audit.rows %}
+      <tr><td>{{ r.row }}</td><td>{{ r.expected_facings }}</td><td>{{ r.correct_facings }}</td><td>{{ r.score }}%</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+{% if audit.gaps %}
+<section class="card">
+  <h2>Gaps (out of stock)</h2>
+  <table>
+    <thead><tr><th>Row</th><th>Product</th><th>Expected</th><th>Found</th><th>Missing</th></tr></thead>
+    <tbody>
+    {% for g in audit.gaps %}
+      <tr><td>{{ g.row }}</td><td>{{ g.product }}</td><td>{{ g.expected }}</td><td>{{ g.found }}</td><td class="neg">{{ g.missing }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+{% if audit.misplaced %}
+<section class="card">
+  <h2>Misplaced</h2>
+  <table>
+    <thead><tr><th>Product</th><th>Found in row</th><th>Belongs in row</th><th>Facings</th></tr></thead>
+    <tbody>
+    {% for m in audit.misplaced %}
+      <tr><td>{{ m.product }}</td><td>{{ m.found_in_row }}</td><td>{{ m.belongs_in_row }}</td><td>{{ m.facings }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+{% if audit.unexpected %}
+<section class="card">
+  <h2>Not in the planogram</h2>
+  <table>
+    <thead><tr><th>Item seen</th><th>Row</th><th>Facings</th></tr></thead>
+    <tbody>
+    {% for u in audit.unexpected %}
+      <tr><td>{{ u.name }}</td><td>{{ u.row }}</td><td>{{ u.facings }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="hint">
+    If this is really a planogram product under a different name, add that name to its
+    <code>aliases</code> list and run again.
+  </p>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>What the model saw</h2>
+  {% for row in detected.rows %}
+    <h3>Row {{ row.row }}</h3>
+    {% if row.products %}
+    <table>
+      <thead><tr><th>Product</th><th>Facings</th></tr></thead>
+      <tbody>
+      {% for p in row.products %}<tr><td>{{ p.name }}</td><td>{{ p.facings }}</td></tr>{% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p class="muted">No products detected.</p>
+    {% endif %}
+  {% endfor %}
+  {% if detected.overall_notes %}<p class="hint">{{ detected.overall_notes }}</p>{% endif %}
+  <p class="hint">
+    Counts from a vision model are estimates and can be off by a unit or two,
+    especially on crowded or low-resolution photos.
+  </p>
+  <details>
+    <summary>Raw JSON</summary>
+    <pre>{{ detected_json }}</pre>
+  </details>
+</section>
+{% endblock %}
