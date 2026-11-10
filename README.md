@@ -3,8 +3,9 @@
 AI retail shelf auditor. Upload a shelf photo and a planogram (the expected layout).
 A vision LLM (via OpenRouter) reads the shelf, and Python code scores compliance.
 
-**Status: Day 1 of 5.** FastAPI skeleton and a first OpenRouter vision call. Planogram
-scoring, UI, history and deployment come in later days.
+**Status: Day 2 of 5.** FastAPI skeleton, OpenRouter vision call, and structured shelf
+detection (Pydantic-validated JSON with automatic retry). Planogram scoring, UI, history
+and deployment come in later days.
 
 ## Setup
 
@@ -39,11 +40,41 @@ curl -X POST http://localhost:8000/describe -F "file=@shelf.jpg;type=image/jpeg"
 
 Returns `{"model": "...", "description": "..."}`. Only JPEG, PNG and WEBP up to 5 MB are accepted.
 
+### Structured detection
+
+```bash
+curl -X POST http://localhost:8000/detect -F "file=@shelf.jpg;type=image/jpeg"
+```
+
+Returns the shelf as validated JSON:
+
+```json
+{
+  "model": "anthropic/claude-haiku-5.5",
+  "shelf": {
+    "rows": [
+      {
+        "row": 1,
+        "products": [{"name": "Coca-Cola 500ml", "facings": 6}],
+        "empty_gaps": 2,
+        "misplaced_items": []
+      }
+    ],
+    "overall_notes": ""
+  }
+}
+```
+
+How it works: the model is prompted to reply with JSON only and to count facings one by
+one. The reply is parsed and validated against the Pydantic models in `app/schemas.py`.
+If it is not valid JSON or breaks the schema, the model is shown its own reply plus the
+error and asked to try again, up to 3 attempts in total.
+
 | Status | Meaning |
 |---|---|
 | 400 | Wrong file type, fake image, or larger than 5 MB |
 | 500 | `OPENROUTER_API_KEY` or `OPENROUTER_MODEL` is not set |
-| 502 | OpenRouter failed or returned an unusable reply |
+| 502 | OpenRouter failed, or the reply stayed invalid after 3 attempts |
 
 ## Tests
 
@@ -57,11 +88,14 @@ Tests make no network calls; the OpenRouter call is replaced with a fake.
 
 ```
 app/
-  main.py      routes: /health, /describe
+  main.py      routes: /health, /describe, /detect
   config.py    settings from .env
-  vision.py    OpenRouter call
+  schemas.py   Pydantic models for detected shelves
+  vision.py    OpenRouter calls, JSON parsing, retry
 tests/
   test_health.py
+  test_schemas.py
+  test_detect.py
 ```
 
 ## Roadmap
