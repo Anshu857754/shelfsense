@@ -1,6 +1,7 @@
-"""ShelfSense API. Day 1: health check and a raw vision description endpoint."""
+"""ShelfSense API. Day 2: health, raw description, and structured detection."""
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import RedirectResponse
 
 from app import vision
 from app.config import get_settings
@@ -26,13 +27,8 @@ def detect_image_type(data: bytes) -> str | None:
     return None
 
 
-@app.get("/health")
-async def health() -> dict[str, str]:
-    return {"status": "ok"}
-
-
-@app.post("/describe")
-async def describe(file: UploadFile = File(...)) -> dict[str, str]:
+async def read_valid_image(file: UploadFile) -> tuple[bytes, str]:
+    """Validate an upload (type, size, real content) and return (bytes, mime type)."""
     if file.content_type not in ALLOWED_TYPES:
         raise HTTPException(400, "Only JPEG, PNG or WEBP images are allowed.")
 
@@ -44,6 +40,23 @@ async def describe(file: UploadFile = File(...)) -> dict[str, str]:
     mime_type = detect_image_type(data)
     if mime_type is None:
         raise HTTPException(400, "File content is not a valid JPEG, PNG or WEBP image.")
+    return data, mime_type
+
+
+@app.get("/", include_in_schema=False)
+async def root() -> RedirectResponse:
+    # Opening the bare address sends you to the interactive docs page.
+    return RedirectResponse(url="/docs")
+
+
+@app.get("/health")
+async def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.post("/describe")
+async def describe(file: UploadFile = File(...)) -> dict[str, str]:
+    data, mime_type = await read_valid_image(file)
 
     try:
         description = await vision.describe_shelf(data, mime_type)
@@ -54,3 +67,19 @@ async def describe(file: UploadFile = File(...)) -> dict[str, str]:
         raise HTTPException(502, str(exc)) from exc
 
     return {"model": get_settings().openrouter_model, "description": description}
+
+
+@app.post("/detect")
+async def detect(file: UploadFile = File(...)) -> dict:
+    """Return the shelf as validated, structured JSON (rows, products, counts, gaps)."""
+    data, mime_type = await read_valid_image(file)
+
+    try:
+        shelf = await vision.detect_shelf(data, mime_type)
+    except vision.MissingAPIKeyError as exc:
+        raise HTTPException(500, str(exc)) from exc
+    except vision.VisionError as exc:
+        # Covers OpenRouter failures and replies that stayed invalid after retries.
+        raise HTTPException(502, str(exc)) from exc
+
+    return {"model": get_settings().openrouter_model, "shelf": shelf.model_dump()}
