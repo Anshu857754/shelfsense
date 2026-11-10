@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <h1>Audit a shelf</h1>
+  <p class="muted">
+    Upload a shelf photo and describe how the shelf <em>should</em> look (the planogram).
+    ShelfSense detects what is on the shelf and scores how closely it matches.
+  </p>
+
+  {% if error %}
+  <div class="alert" role="alert">{{ error }}</div>
+  {% endif %}
+
+  <form method="post" action="/audit-ui" enctype="multipart/form-data"
+        onsubmit="this.querySelector('button').textContent='Analyzing... this takes 10-30 seconds'; this.querySelector('button').disabled=true;">
+    <label for="file">1. Shelf photo (JPEG, PNG or WEBP, up to 5 MB)</label>
+    <input id="file" type="file" name="file" accept="image/jpeg,image/png,image/webp" required>
+
+    <label for="planogram">2. Planogram (JSON)</label>
+    <textarea id="planogram" name="planogram" rows="18" spellcheck="false" required>{{ planogram_text }}</textarea>
+    <p class="hint">
+      Each row lists the products expected there and how many <strong>facings</strong>
+      (units side by side at the front). <code>aliases</code> are optional other names
+      the model might use for the same product.
+    </p>
+
+    <button type="submit">Run audit</button>
+  </form>
+</section>
+{% endblock %}
