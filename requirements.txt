@@ -4,4 +4,7 @@ httpx
 pydantic-settings
 python-multipart
 python-dotenv
+rapidfuzz
+jinja2
+pillow
 pytest
