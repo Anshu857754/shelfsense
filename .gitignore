@@ -5,3 +5,7 @@ __pycache__/
 .pytest_cache/
 .vscode/
 .claude/
+data/
+evaluation/results/
+evaluation/cases/*
+!evaluation/cases/_template/

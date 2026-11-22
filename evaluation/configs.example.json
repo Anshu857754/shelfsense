@@ -1,0 +1,10 @@
+[
+  {"name": "haiku-5.5-full",  "model": "anthropic/claude-haiku-5.5", "detail": "full"},
+  {"name": "haiku-5.5-lean",  "model": "anthropic/claude-haiku-5.5", "detail": "lean"},
+  {"name": "haiku-5.5-min",   "model": "anthropic/claude-haiku-5.5", "detail": "minimal"},
+  {"name": "haiku-5.5-3-looks", "model": "anthropic/claude-haiku-5.5", "detail": "lean", "passes": 3},
+  {"name": "sonnet-5.5-lean", "model": "anthropic/claude-sonnet-5.5", "detail": "lean"},
+  {"name": "gemini-3.1-flash-lite-lean", "model": "google/gemini-3.1-flash-lite", "detail": "lean"},
+  {"name": "gemini-2.5-flash-lean", "model": "google/gemini-2.5-flash", "detail": "lean"},
+  {"name": "qwen3-vl-235b-lean", "model": "qwen/qwen3-vl-235b-a22b-instruct", "detail": "lean"}
+]

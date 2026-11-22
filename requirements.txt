@@ -6,4 +6,5 @@ python-multipart
 python-dotenv
 rapidfuzz
 jinja2
+pillow
 pytest

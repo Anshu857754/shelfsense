@@ -1,0 +1,22 @@
+{
+  "image": "photo.jpg",
+  "category": "grocery",
+  "planogram": {
+    "store": "Store-101",
+    "shelf": "Snacks-A",
+    "rows": [
+      {"row": 1, "expected": [{"product": "Chips bag", "facings": 6, "aliases": ["snack bag"]}, {"product": "Cereal box", "facings": 4}]},
+      {"row": 2, "expected": [{"product": "Biscuit pack", "facings": 5}]}
+    ]
+  },
+  "truth": {
+    "rows": [
+      {"row": 1, "products": [{"product": "Chips bag", "facings": 5}, {"product": "Cereal box", "facings": 4}]},
+      {"row": 2, "products": [{"product": "Biscuit pack", "facings": 0}]}
+    ],
+    "unexpected": [
+      {"row": 2, "name": "wine bottle", "facings": 2}
+    ]
+  },
+  "notes": "Copy this folder, rename it, put your photo in it, then edit this file. Folders starting with _ are ignored."
+}
