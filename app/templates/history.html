@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% from "_macros.html" import stat_tile, audit_table, empty_state with context %}
+{% block title %}History - ShelfSense{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <h1>Audit history</h1>
+    <p class="lede">Every audit is saved, so you can come back to it any time.</p>
+  </div>
+  <a class="button" href="/new">+ New audit</a>
+</section>
+
+<section class="stats four">
+  {{ stat_tile(stats.total, 'Total audits', 'tile-total') }}
+  {{ stat_tile(stats.completed, 'Completed', 'tile-done') }}
+  {{ stat_tile(stats.attention, 'Needs attention', 'tile-attn') }}
+  {{ stat_tile(stats.processing, 'Processing', 'tile-busy') }}
+</section>
+
+<section class="card">
+  <form class="filters" method="get" action="/audits" role="search">
+    <label class="f-search">
+      <span class="sr-only">Search audits</span>
+      <input type="search" name="q" value="{{ filters.q }}" placeholder="Search by ID, store, shelf or category">
+    </label>
+    <label>
+      <span class="sr-only">Status</span>
+      <select name="status">
+        <option value="">All statuses</option>
+        {% for value, label in [('completed', 'Completed'), ('attention', 'Needs attention'), ('processing', 'Processing'), ('needs_review', 'Needs review'), ('failed', 'Failed')] %}
+        <option value="{{ value }}" {{ 'selected' if filters.status == value }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      <span class="sr-only">Category</span>
+      <select name="category">
+        <option value="">All categories</option>
+        {% for c in categories %}
+        <option value="{{ c.key }}" {{ 'selected' if filters.category == c.key }}>{{ c.label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="f-date"><span>From</span><input type="date" name="date_from" value="{{ filters.date_from }}"></label>
+    <label class="f-date"><span>To</span><input type="date" name="date_to" value="{{ filters.date_to }}"></label>
+    <button type="submit" class="sm">Apply</button>
+    {% if filtered %}<a class="reset" href="/audits">Reset</a>{% endif %}
+  </form>
+
+  <p class="hint results-count">
+    {{ total }} audit{{ '' if total == 1 else 's' }}{{ ' match your filters' if filtered }}
+  </p>
+
+  {% if audits %}
+    {{ audit_table(audits) }}
+    {% if pages > 1 %}
+    <nav class="pager" aria-label="Pages">
+      {% set base = '/audits?' ~ (filter_query ~ '&' if filter_query else '') %}
+      {% if page > 1 %}<a href="{{ base }}page={{ page - 1 }}">&larr; Previous</a>{% endif %}
+      <span>Page {{ page }} of {{ pages }}</span>
+      {% if page < pages %}<a href="{{ base }}page={{ page + 1 }}">Next &rarr;</a>{% endif %}
+    </nav>
+    {% endif %}
+  {% elif filtered %}
+    {{ empty_state('No audits match', 'Try a different search or clear the filters.', 'Clear filters', '/audits') }}
+  {% else %}
+    {{ empty_state('No audits yet', 'Run your first audit and it will be saved here.', 'Run an audit', '/new') }}
+  {% endif %}
+</section>
+{% endblock %}

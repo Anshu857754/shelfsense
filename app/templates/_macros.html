@@ -1,0 +1,66 @@
+{# Small reusable pieces shared by the dashboard, history and audit pages. #}
+
+{% macro status_chip(status) %}
+<span class="status {{ status }}"><i aria-hidden="true"></i>{{ status|status_label }}</span>
+{% endmacro %}
+
+{% macro score_pill(score) %}
+{% if score is none %}<span class="score-pill none">&mdash;</span>
+{% else %}<span class="score-pill {{ score_level(score) }}">{{ score }}%</span>{% endif %}
+{% endmacro %}
+
+{% macro stat_tile(value, label, tone='', hint='') %}
+<div class="stat {{ tone }}">
+  <span class="big">{{ value }}</span>
+  <span class="name">{{ label }}</span>
+  {% if hint %}<span class="tip">{{ hint }}</span>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro empty_state(title, text, link_text='', link_href='') %}
+<div class="empty">
+  <svg viewBox="0 0 64 64" aria-hidden="true">
+    <rect x="8" y="14" width="48" height="36" rx="9" fill="#f3effc" stroke="#cbbdef" stroke-width="2"/>
+    <rect x="16" y="22" width="12" height="8" rx="2" fill="#ffc6a7"/>
+    <rect x="32" y="22" width="16" height="8" rx="2" fill="#b8d9f1"/>
+    <rect x="16" y="36" width="20" height="8" rx="2" fill="#e4dbf7"/>
+  </svg>
+  <h3>{{ title }}</h3>
+  <p>{{ text }}</p>
+  {% if link_text %}<a class="button" href="{{ link_href }}">{{ link_text }}</a>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro audit_table(audits) %}
+<div class="table-wrap">
+  <table class="audits">
+    <thead>
+      <tr>
+        <th>Audit</th><th>Category</th><th>Status</th><th>Score</th>
+        <th>Detected</th><th>Missing</th><th>Tasks</th><th>When</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for a in audits %}
+      <tr>
+        <td>
+          <a class="audit-link" href="/audits/{{ a.id }}">{{ a.id }}</a>
+          {% if a.store or a.shelf %}<span class="sub">{{ a.store }}{{ ' · ' if a.store and a.shelf }}{{ a.shelf }}</span>{% endif %}
+        </td>
+        <td>{{ a.category_name or a.category_label }}</td>
+        <td>{{ status_chip(a.status) }}</td>
+        <td>{{ score_pill(a.score) }}</td>
+        <td>{% if a.status in ('completed', 'needs_review') %}{{ a.detected_units }}{% else %}&mdash;{% endif %}</td>
+        <td>{% if a.status == 'completed' %}{{ a.missing_units }}{% else %}&mdash;{% endif %}</td>
+        <td>
+          {% if a.task_total %}
+            <span class="task-mini"><span class="meter mini"><span style="width: {{ (a.task_done / a.task_total * 100)|round|int }}%"></span></span>{{ a.task_done }}/{{ a.task_total }}</span>
+          {% else %}&mdash;{% endif %}
+        </td>
+        <td class="when">{{ a.created_at|fmt_time }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endmacro %}

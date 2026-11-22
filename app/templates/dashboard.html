@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% from "_macros.html" import stat_tile, audit_table, empty_state with context %}
+{% block title %}Dashboard - ShelfSense{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <h1>Dashboard</h1>
+    <p class="lede">Your shelf audits at a glance.</p>
+  </div>
+  <a class="button" href="/new">+ New audit</a>
+</section>
+
+<section class="stats four">
+  {{ stat_tile(stats.total, 'Total audits', 'tile-total') }}
+  {{ stat_tile(stats.completed, 'Completed', 'tile-done') }}
+  {{ stat_tile(stats.attention, 'Needs attention', 'tile-attn', 'Below ' ~ attention_below|int ~ '%, needs review, or failed') }}
+  {{ stat_tile(stats.processing, 'Processing', 'tile-busy') }}
+</section>
+
+{% if stats.total == 0 %}
+<section class="card">
+  {{ empty_state('No audits yet', 'Upload a shelf photo or capture one with your camera, add a planogram, and ShelfSense will score it. Your audits will appear here.', 'Run your first audit', '/new') }}
+</section>
+{% else %}
+
+<section class="chart-grid">
+  <div class="card chart">
+    <h2>Compliance trend</h2>
+    <p class="hint">Last {{ charts.trend|length }} completed audit{{ '' if charts.trend|length == 1 else 's' }}, oldest to newest.</p>
+    {% if charts.trend %}
+    <div class="bars" role="img" aria-label="Compliance score of recent audits">
+      {% for t in charts.trend %}
+      <a class="bar-col" href="/audits/{{ t.id }}" title="{{ t.id }}: {{ t.score }}%">
+        <span class="v">{{ t.score|round|int }}</span>
+        <span class="track"><span class="fill {{ t.level }}" style="height: {{ t.score }}%; animation-delay: {{ loop.index0 * 50 }}ms"></span></span>
+        <span class="lbl">{{ t.label }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted">No completed audits yet.</p>
+    {% endif %}
+  </div>
+
+  <div class="card chart">
+    <h2>Audit status</h2>
+    <div class="donut-wrap">
+      <div class="donut" style="background: {{ charts.donut }}" role="img" aria-label="Audits by status">
+        <div class="hole"><b>{{ charts.total }}</b><span>audits</span></div>
+      </div>
+      <ul class="legend-list">
+        {% for l in charts.legend %}
+        <li><i style="background: {{ l.color }}"></i>{{ l.label }}<b>{{ l.count }}</b></li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+
+  <div class="card chart">
+    <h2>Average by category</h2>
+    {% if charts.by_category %}
+    <ul class="hbars">
+      {% for c in charts.by_category %}
+      <li>
+        <div class="hb-head"><span>{{ c.label }}</span><b>{{ c.avg }}%</b></div>
+        <div class="bar {{ c.level }}"><span style="width: {{ c.avg }}%"></span></div>
+        <span class="hint">{{ c.audits }} audit{{ '' if c.audits == 1 else 's' }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted">Averages appear once an audit completes.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>Recent audits</h2>
+    <a href="/audits">View all &rarr;</a>
+  </div>
+  {{ audit_table(recent) }}
+</section>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>{% block title %}ShelfSense{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css?v={{ asset_version('style.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="/" aria-label="ShelfSense home">
+      <svg class="logo" viewBox="0 0 36 36" aria-hidden="true">
+        <defs>
+          <linearGradient id="logo-grad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#ffc6a7"/>
+            <stop offset="1" stop-color="#cbbdef"/>
+          </linearGradient>
+        </defs>
+        <rect width="36" height="36" rx="10" fill="url(#logo-grad)"/>
+        <rect x="7" y="12" width="22" height="2.6" rx="1.3" fill="#fff"/>
+        <rect x="7" y="20" width="22" height="2.6" rx="1.3" fill="#fff"/>
+        <rect x="7" y="28" width="22" height="2.6" rx="1.3" fill="#fff"/>
+        <rect x="9" y="7" width="4" height="5" rx="1.2" fill="#fff" opacity=".9"/>
+        <rect x="15" y="8.5" width="4" height="3.5" rx="1.2" fill="#fff" opacity=".9"/>
+        <rect x="21" y="6.5" width="5" height="5.5" rx="1.2" fill="#fff" opacity=".9"/>
+        <rect x="10" y="15" width="5" height="5" rx="1.2" fill="#fff" opacity=".9"/>
+        <rect x="19" y="16" width="4" height="4" rx="1.2" fill="#fff" opacity=".9"/>
+      </svg>
+      <span class="brand-text">ShelfSense<small>AI retail shelf auditor</small></span>
+    </a>
+    <nav class="main-nav" aria-label="Main">
+      <a href="/" class="{{ 'active' if active == 'dashboard' }}">Dashboard</a>
+      <a href="/audits" class="{{ 'active' if active == 'history' }}">History</a>
+      <a href="/docs">API docs</a>
+      <a href="/new" class="nav-cta {{ 'active' if active == 'new' }}">+ New audit</a>
+    </nav>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+  <footer>A vision model reads the shelf. Plain code scores it against your planogram.</footer>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

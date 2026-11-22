@@ -1,0 +1,392 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_chip, stat_tile with context %}
+{% block title %}Audit {{ audit.id }} - ShelfSense{% endblock %}
+{% block head %}{% if audit.status == 'processing' %}<noscript><meta http-equiv="refresh" content="3"></noscript>{% endif %}{% endblock %}
+
+{% block content %}
+{% set a = audit %}
+{% set r = result %}
+{% set labels = {'ok': 'In place', 'short': 'Short on stock', 'misplaced': 'Misplaced', 'unexpected': 'Not in planogram', 'uncertain': 'Uncertain'} %}
+{% set task_labels = {'restock': 'Restock', 'move': 'Move', 'remove': 'Remove', 'correct': 'Correct qty', 'check': 'Check'} %}
+
+{# One small square per facing, capped so huge counts stay readable #}
+{% macro units(n, cls) %}{% for i in range([n, 24]|min) %}<span class="unit {{ cls }}"></span>{% endfor %}{% if n > 24 %}<span class="more">+{{ n - 24 }}</span>{% endif %}{% endmacro %}
+
+<section class="page-head">
+  <div>
+    <a class="crumb" href="/audits">&larr; History</a>
+    <h1>Audit <span class="mono">{{ a.id }}</span></h1>
+    <p class="meta">
+      {{ status_chip(a.status) }}
+      <span>{{ a.category_name or a.category_label }}</span>
+      {% if a.store %}<span>{{ a.store }}</span>{% endif %}
+      {% if a.shelf %}<span>{{ a.shelf }}</span>{% endif %}
+      <span>{{ a.created_at|fmt_time }}</span>
+      {% if a.model %}<span>Model <code>{{ a.model }}</code></span>{% endif %}
+      {% if a.usage_json %}
+      <span title="AI time {{ a.usage_json.seconds }}s over {{ a.usage_json.calls }} call(s)">
+        Analysed in {{ a.usage_json.total_seconds }}s &middot; {{ a.usage_json.prompt_tokens + a.usage_json.completion_tokens }} tokens
+      </span>
+      {% endif %}
+      {% if a.corrected %}<span class="chip ok">Corrected by you</span>{% endif %}
+    </p>
+  </div>
+  <div class="head-actions">
+    {% if a.status == 'completed' %}
+    <a class="button ghost-link" href="/audits/{{ a.id }}/export.csv" title="Download the result as a spreadsheet">Download CSV</a>
+    {% endif %}
+    {% if a.status != 'processing' %}
+    <form method="post" action="/audits/{{ a.id }}/retry">
+      <button type="submit" class="ghost" title="Send the photo to the AI again">Re-run AI</button>
+    </form>
+    <form method="post" action="/audits/{{ a.id }}/delete"
+          onsubmit="return confirm('Delete this audit and its photo? This cannot be undone.');">
+      <button type="submit" class="ghost danger">Delete</button>
+    </form>
+    {% endif %}
+    <a class="button" href="/new">+ New audit</a>
+  </div>
+</section>
+
+{% if a.status == 'processing' %}
+<!-- ============================ PROCESSING ============================ -->
+<section class="card processing" id="processing" data-audit-id="{{ a.id }}">
+  <div class="spinner" aria-hidden="true"></div>
+  <h2>Auditing your shelf</h2>
+  <p class="muted">This usually takes 10 to 30 seconds. You can leave this page: the audit keeps running and is saved in your history.</p>
+  <ol class="progress-steps" id="progress-steps">
+    {% for s in steps %}<li class="{{ s.state }}">{{ s.label }}</li>{% endfor %}
+  </ol>
+  <noscript><p class="hint">This page refreshes itself every few seconds.</p></noscript>
+</section>
+
+{% elif a.status == 'failed' %}
+<!-- ============================== FAILED ============================== -->
+<section class="card state-card failed">
+  <div class="state-icon" aria-hidden="true">!</div>
+  <div>
+    <h2>The audit could not be completed</h2>
+    <p>{{ a.error or 'Something went wrong while analysing this photo.' }}</p>
+    <p class="hint">No compliance score was recorded, because a failed detection says nothing about the shelf.</p>
+    <form method="post" action="/audits/{{ a.id }}/retry"><button type="submit">Try again</button></form>
+  </div>
+</section>
+<section class="card">
+  <h2>Photo</h2>
+  <div class="shelf-view"><img src="/audits/{{ a.id }}/image" alt="The shelf photo for this audit"></div>
+</section>
+
+{% else %}
+<!-- ================== COMPLETED or NEEDS REVIEW ======================= -->
+
+<section class="card answer {{ level if a.status == 'completed' else 'incomplete' }}" id="answer">
+  {% if a.status == 'completed' %}
+  <div class="ring {{ level }}" style="--score: {{ a.score }}">
+    <div class="inner"><span class="num">{{ a.score }}%</span><span class="lbl">compliance</span></div>
+  </div>
+  {% elif r.estimate_low is not none %}
+  <div class="ring none estimate">
+    <div class="inner">
+      <span class="num small">{% if r.estimate_low == r.estimate_high %}~{{ '%g'|format(r.estimate_low) }}%{% else %}{{ '%g'|format(r.estimate_low) }}&ndash;{{ '%g'|format(r.estimate_high) }}%{% endif %}</span>
+      <span class="lbl">estimated, not confirmed</span>
+    </div>
+  </div>
+  {% else %}
+  <div class="ring none"><div class="inner"><span class="num">&mdash;</span><span class="lbl">no score</span></div></div>
+  {% endif %}
+
+  <div class="answer-body">
+    <div class="answer-tags">
+      {% if a.status == 'completed' %}
+        {% set verdict = 'Looking great' if level == 'good' else ('Needs attention' if level == 'ok' else 'Needs work') %}
+        <span class="verdict {{ level }}">{{ verdict }}</span>
+      {% else %}
+        <span class="verdict warn">Incomplete audit</span>
+      {% endif %}
+      {% if r.trust_level %}<span class="trust {{ r.trust_level }}" title="{{ r.trust_reason }}">Trust: {{ r.trust_level|capitalize }}</span>{% endif %}
+      <span class="chip ok" id="confirmed-chip" {{ '' if a.confirmed_at else 'hidden' }}>Confirmed by you</span>
+    </div>
+
+    <h2 class="headline">{{ r.headline }}</h2>
+    <ul class="summary">
+      {% for line in r.summary %}<li>{{ line }}</li>{% endfor %}
+    </ul>
+    {% if r.trust_reason %}<p class="trust-note"><strong>How sure are we?</strong> {{ r.trust_reason }}</p>{% endif %}
+
+    <div class="answer-actions">
+      {% if a.status == 'completed' %}
+      <button type="button" id="confirm-btn" class="{{ 'ghost' if a.confirmed_at }}" data-audit-id="{{ a.id }}"
+              data-confirmed="{{ 'true' if a.confirmed_at else 'false' }}">{{ 'Undo confirmation' if a.confirmed_at else 'Confirm this result' }}</button>
+      {% endif %}
+      {% if r.incomplete_code == 'empty_shelf' %}
+      <button type="button" id="confirm-empty-btn" data-audit-id="{{ a.id }}">Yes, the shelf is empty (record 0%)</button>
+      {% endif %}
+      {% if r.incomplete_code == 'no_match' or (r.complete and r.detected_units and r.unexpected_units * 2 >= r.detected_units) %}
+      <a class="button" href="/new?from={{ a.id }}">Use what the AI saw as my planogram</a>
+      {% endif %}
+      {% if items|selectattr('uncertain')|list %}
+      <a class="button ghost-link" href="#review">Review the uncertain items</a>
+      {% endif %}
+    </div>
+    <p class="hint" id="confirmed-note" {{ '' if a.confirmed_at else 'hidden' }}>Confirmed {{ a.confirmed_at|fmt_time }}.</p>
+  </div>
+</section>
+
+{% if warnings %}
+<ul class="warnings" role="note">
+  {% for w in warnings %}<li>{{ w }}</li>{% endfor %}
+</ul>
+{% endif %}
+
+<section class="stats six">
+  {{ stat_tile(r.detected_units, 'Units detected', 'tile-seen') }}
+  {{ stat_tile(r.missing_units if r.complete else '—', 'Units missing', 'tile-gaps') }}
+  {{ stat_tile(r.misplaced_units if r.complete else '—', 'Units misplaced', 'tile-moved') }}
+  {{ stat_tile(r.unexpected_units if r.complete else '—', 'Unexpected units', 'tile-unknown') }}
+  {{ stat_tile(r.uncertain_units, 'Uncertain (not counted)', 'tile-uncertain') }}
+  {{ stat_tile(((r.confidence * 100)|round|int ~ '%') if r.confidence is not none else 'n/a', 'AI confidence', 'tile-conf', "The average of the confidence the AI reported for counted items. It is the model's own estimate, not a measured accuracy.") }}
+</section>
+
+<nav class="subnav" aria-label="Sections">
+  <a href="#shelf-view-card">Shelf view</a>
+  {% if r.complete %}<a href="#todo">To-do list</a><a href="#compare">Planogram vs shelf</a>{% endif %}
+  <a href="#review">Review and correct</a>
+</nav>
+
+<!-- Shelf photo with boxes -->
+{% set boxed = r.detections|selectattr('box')|list %}
+<section class="card" id="shelf-view-card">
+  <h2>Shelf view</h2>
+  {% if boxed %}
+  <div class="legend" id="legend" role="group" aria-label="Show or hide box types">
+    {% for key in ['ok', 'short', 'misplaced', 'unexpected', 'uncertain'] %}
+      <button type="button" class="legend-btn {{ key }}" data-status="{{ key }}" aria-pressed="true">{{ labels[key] }}</button>
+    {% endfor %}
+  </div>
+  {% endif %}
+  <div class="shelf-view" id="shelf-view">
+    <img src="/audits/{{ a.id }}/image" alt="Your shelf photo">
+    {% for d in boxed %}
+    <div class="bbox {{ d.status }}"
+         style="left: {{ '%.2f'|format(d.box.x * 100) }}%; top: {{ '%.2f'|format(d.box.y * 100) }}%; width: {{ '%.2f'|format(d.box.w * 100) }}%; height: {{ '%.2f'|format(d.box.h * 100) }}%;"
+         title="{{ d.name }} x{{ d.facings }} ({{ labels[d.status] }}, row {{ d.row }}{% if d.confidence is not none %}, AI confidence {{ (d.confidence * 100)|round|int }}%{% endif %})">
+      <span class="bbox-label">{{ d.name }} &times;{{ d.facings }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% if boxed %}
+    <p class="hint">Boxes are the AI's estimate of where each product group sits, so treat them as approximate.</p>
+  {% else %}
+    <p class="hint">The AI did not return box positions for this photo, so nothing is drawn on it. The tables below still show everything it found.</p>
+  {% endif %}
+</section>
+
+{% if r.complete %}
+<!-- To-do list (saved in the database) -->
+<section class="card todo" id="todo" data-audit-id="{{ a.id }}">
+  <div class="todo-head">
+    <h2>To-do list</h2>
+    <span class="todo-count" id="todo-count" data-total="{{ tasks|length }}">{{ tasks_done }} of {{ tasks|length }} done</span>
+  </div>
+  {% if tasks %}
+  <p class="hint todo-sum">
+    Most urgent first:
+    {{ tasks|selectattr('priority', 'equalto', 'high')|list|length }} high,
+    {{ tasks|selectattr('priority', 'equalto', 'medium')|list|length }} medium,
+    {{ tasks|selectattr('priority', 'equalto', 'low')|list|length }} low.
+    Your progress is saved.
+  </p>
+  <div class="meter"><span id="todo-bar" style="width: {{ (tasks_done / tasks|length * 100)|round|int }}%"></span></div>
+  <ul class="tasks" id="tasks">
+    {% for t in tasks %}
+    <li class="task {{ t.priority }} {{ 'done' if t.done }}" data-task-id="{{ t.id }}">
+      <label>
+        <input type="checkbox" {{ 'checked' if t.done }}>
+        <span class="task-text">{{ t.text }}</span>
+      </label>
+      <span class="kind">{{ task_labels.get(t.kind, t.kind) }}</span>
+      <span class="prio {{ t.priority }}">{{ t.priority|capitalize }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  <p class="todo-msg" id="todo-msg" role="status"></p>
+  <p class="todo-done" id="todo-done" {{ 'hidden' if tasks_done != tasks|length }}>All done. This shelf is ready.</p>
+  {% else %}
+  <p class="todo-done">Nothing to fix. This shelf matches the planogram.</p>
+  {% endif %}
+</section>
+
+<!-- Planogram vs shelf -->
+<section class="card" id="compare">
+  <h2>Planogram vs shelf</h2>
+  <p class="hint legend-line">
+    One square is one facing:
+    <span class="unit ok"></span> found
+    <span class="unit missing"></span> missing
+    <span class="unit over"></span> over
+    <span class="unit misplaced"></span> misplaced
+    <span class="unit unexpected"></span> not in planogram
+  </p>
+  {% for c in r.comparison %}
+  <div class="cmp-row">
+    <div class="cmp-head">
+      <h3>Row {{ c.row }}</h3>
+      {% if c.score is not none %}
+        {% set cl = 'good' if c.score >= attention_below else ('ok' if c.score >= 60 else 'bad') %}
+        <span class="verdict {{ cl }}">{{ c.score }}%</span>
+      {% else %}
+        <span class="verdict bad">Not in planogram</span>
+      {% endif %}
+    </div>
+    <div class="table-wrap">
+      <table class="cmp">
+        <thead><tr><th>Product</th><th>Planogram</th><th>On the shelf</th><th>Status</th></tr></thead>
+        <tbody>
+        {% for it in c['items'] %}
+          <tr>
+            <td>{{ it.product }}</td>
+            <td><div class="units">{{ units(it.expected, 'plan') }}</div></td>
+            <td>
+              <div class="units">
+                {{ units([it.found, it.expected]|min, 'ok') }}{{ units([it.expected - it.found, 0]|max, 'missing') }}{{ units([it.found - it.expected, 0]|max, 'over') }}
+              </div>
+            </td>
+            <td>
+              {% if it.found == it.expected %}<span class="chip ok">In place</span>
+              {% elif it.found > it.expected %}<span class="chip over">Over by {{ it.found - it.expected }}</span>
+              {% elif it.found == 0 %}<span class="chip unexpected">Missing all {{ it.expected }}</span>
+              {% else %}<span class="chip short">Short by {{ it.expected - it.found }}</span>{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        {% for x in c.extras %}
+          <tr class="extra">
+            <td>{{ x.name }}</td>
+            <td class="muted">&mdash;</td>
+            <td><div class="units">{{ units(x.facings, x.kind) }}</div></td>
+            <td>
+              {% if x.kind == 'misplaced' %}<span class="chip misplaced">Misplaced, belongs in row {{ x.belongs_in_row }}</span>
+              {% else %}<span class="chip unexpected">Not in planogram</span>{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+<!-- Review and correct -->
+<section class="card" id="review" data-audit-id="{{ a.id }}">
+  <h2>Review and correct detections</h2>
+  <p class="hint">
+    Fix anything the AI got wrong: change a name, quantity or row, assign an item to the right planogram product,
+    untick an item to leave it out, or add one it missed. Detections the AI was less than {{ threshold_pct }}% sure of
+    are <strong>not counted</strong> until you tick them. Then recompute: this is instant and does not call the AI again.
+  </p>
+
+  {% macro item_row(it, is_new=false) %}
+  <tr class="{{ 'uncertain' if it.uncertain }}" data-item='{{ it|tojson }}'>
+    <td><input type="checkbox" class="i-count" {{ 'checked' if (is_new or not it.uncertain) }} aria-label="Count this item"></td>
+    <td><input type="number" class="i-row" min="1" max="99" value="{{ it.row }}" aria-label="Shelf row"></td>
+    <td>
+      <input type="text" class="i-name" value="{{ it.name }}" maxlength="120" placeholder="Product name" aria-label="Product name">
+      {% if not is_new and (it.category or it.position or it.attributes) %}
+      <span class="sub">{{ [it.category, it.position]|select|join(' · ') }}{{ ' · ' if (it.category or it.position) and it.attributes }}{{ it.attributes|join(', ') }}</span>
+      {% endif %}
+    </td>
+    <td><input type="number" class="i-qty" min="0" max="999" value="{{ it.quantity }}" aria-label="Quantity"></td>
+    <td>
+      <select class="i-assign" aria-label="Planogram product this item is">
+        <option value="">Automatic</option>
+        {% for n in expected_names %}<option value="{{ n }}" {{ 'selected' if it.assigned_to == n }}>{{ n }}</option>{% endfor %}
+      </select>
+    </td>
+    <td class="conf">
+      {% if is_new %}<span class="chip ok">Added by you</span>
+      {% else %}
+        {% if it.confidence is not none %}{{ (it.confidence * 100)|round|int }}%{% else %}<span class="muted">not reported</span>{% endif %}
+        {% if it.uncertain %}<span class="chip unexpected">Uncertain</span>{% elif it.source == 'user' %}<span class="chip ok">Edited by you</span>{% endif %}
+        {% if it.count_confidence is not none %}<span class="sub">count {{ (it.count_confidence * 100)|round|int }}% sure</span>{% endif %}
+        {% if it.verified %}<span class="chip ok">Second look confirmed</span>{% endif %}
+        {% if it.uncertain and it.matched_expected %}<span class="sub">AI suggests: {{ it.matched_expected }}</span>{% endif %}
+      {% endif %}
+    </td>
+    <td><button type="button" class="ghost sm danger i-remove">{{ 'Remove' if is_new else 'Ignore' }}</button></td>
+  </tr>
+  {% endmacro %}
+
+  <div class="table-wrap">
+    <table class="items" id="items-table">
+      <thead><tr><th>Count</th><th>Row</th><th>Product seen</th><th>Qty</th><th>Is planogram product</th><th>AI confidence</th><th></th></tr></thead>
+      <tbody id="items-body">
+        {% for it in items %}{{ item_row(it) }}{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if not items %}<p class="muted">The AI did not report any products. Add what you can see below.</p>{% endif %}
+
+  <template id="item-template">
+    {{ item_row({'row': 1, 'name': '', 'quantity': 1, 'category': '', 'position': '', 'attributes': [], 'confidence': none, 'matched_expected': none, 'assigned_to': none, 'box': none, 'source': 'user', 'uncertain': false, 'new': true}, true) }}
+  </template>
+
+  <div class="review-actions">
+    <button type="button" class="ghost" id="add-item">+ Add an item the AI missed</button>
+    {% if items|selectattr('uncertain')|list %}
+    <button type="button" class="ghost" id="accept-uncertain" title="Tick every uncertain detection so it is counted">Accept all uncertain</button>
+    {% endif %}
+    <label class="check-line" title="Only for a shelf that really has nothing on it">
+      <input type="checkbox" id="confirm-empty" {{ 'checked' if a.confirmed_empty }}>
+      This shelf really is empty
+    </label>
+    <button type="button" id="save-corrections">Save corrections and recompute</button>
+  </div>
+  <p class="review-msg" id="review-msg" role="status"></p>
+
+  <details>
+    <summary>Original AI output (never modified)</summary>
+    <pre>{{ audit.detected_json|tojson(indent=2) }}</pre>
+  </details>
+</section>
+
+{% if r.complete and (r.gaps or r.misplaced or r.unexpected or r.overstock) %}
+<section class="card" id="issues">
+  <h2>Details</h2>
+  {% if r.gaps %}
+  <h3>Missing products</h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Row</th><th>Product</th><th>Expected</th><th>Found</th><th>Missing</th></tr></thead>
+    <tbody>{% for g in r.gaps %}<tr><td>{{ g.row }}</td><td>{{ g.product }}</td><td>{{ g.expected }}</td><td>{{ g.found }}</td><td><span class="neg">{{ g.missing }}</span></td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% endif %}
+  {% if r.overstock %}
+  <h3>Quantity above the planogram</h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Row</th><th>Product</th><th>Expected</th><th>Found</th><th>Extra</th></tr></thead>
+    <tbody>{% for o in r.overstock %}<tr><td>{{ o.row }}</td><td>{{ o.product }}</td><td>{{ o.expected }}</td><td>{{ o.found }}</td><td>{{ o.extra }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% endif %}
+  {% if r.misplaced %}
+  <h3>Misplaced products</h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Product</th><th>Found in row</th><th>Belongs in row</th><th>Facings</th></tr></thead>
+    <tbody>{% for m in r.misplaced %}<tr><td>{{ m.product }}</td><td>{{ m.found_in_row }}</td><td>{{ m.belongs_in_row }}</td><td>{{ m.facings }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% endif %}
+  {% if r.unexpected %}
+  <h3>Not in the planogram</h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Item seen</th><th>Row</th><th>Facings</th></tr></thead>
+    <tbody>{% for u in r.unexpected %}<tr><td>{{ u.name }}</td><td>{{ u.row }}</td><td>{{ u.facings }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  <p class="hint">If one of these really is a planogram product under another name, assign it in the correction table above.</p>
+  {% endif %}
+</section>
+{% endif %}
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}<script src="/static/result.js?v={{ asset_version('result.js') }}" defer></script>{% endblock %}

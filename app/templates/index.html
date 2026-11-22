@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}New audit - ShelfSense{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <h1>Audit a shelf</h1>
+    <p class="lede">
+      Choose a category, add a photo of the shelf, and describe how it <em>should</em> look.
+      ShelfSense detects what is there and scores how closely it matches your planogram.
+    </p>
+  </div>
+</section>
+
+{% if error %}
+<div class="alert" role="alert">{{ error }}</div>
+{% endif %}
+{% if notice %}
+<div class="notice" role="status">{{ notice }}</div>
+{% endif %}
+
+<form class="card" id="audit-form" method="post" action="/audits" enctype="multipart/form-data" novalidate>
+  <input type="hidden" name="reuse_image" id="reuse-image" value="{{ reuse_image }}">
+
+  <!-- 1. Category -->
+  <div class="field">
+    <label for="category"><span class="dot">1</span> Retail category</label>
+    <div class="category-row">
+      <select id="category" name="category">
+        {% for c in categories %}
+        <option value="{{ c.key }}" data-hint="{{ c.hint }}" {{ 'selected' if c.key == selected_category }}>{{ c.label }}</option>
+        {% endfor %}
+      </select>
+      <input id="category-name" name="category_name" type="text" maxlength="60"
+             placeholder="Name your category, e.g. Pet supplies" value="{{ category_name }}"
+             {{ '' if selected_category == 'custom' else 'hidden' }}>
+    </div>
+    <p class="hint" id="category-hint"></p>
+  </div>
+
+  <!-- 2. Photo -->
+  <div class="field">
+    <label id="photo-label"><span class="dot">2</span> Shelf photo</label>
+
+    <div class="tabs" role="tablist" aria-labelledby="photo-label">
+      <button type="button" class="tab active" role="tab" id="tab-upload" aria-selected="true" aria-controls="panel-upload">Upload photo</button>
+      <button type="button" class="tab" role="tab" id="tab-camera" aria-selected="false" aria-controls="panel-camera">Use camera</button>
+    </div>
+
+    <input id="file" class="sr-only" type="file" name="file" accept="image/jpeg,image/png,image/webp" required aria-label="Shelf photo file">
+
+    <!-- Upload mode -->
+    <div id="panel-upload" role="tabpanel" aria-labelledby="tab-upload">
+      <div class="dropzone" id="dropzone" tabindex="0" role="button"
+           aria-label="Choose a shelf photo, or drop one here">
+        <svg class="dz-icon" viewBox="0 0 48 48" aria-hidden="true">
+          <rect x="6" y="10" width="36" height="28" rx="6" fill="#f3effc" stroke="#cbbdef" stroke-width="2"/>
+          <circle cx="18" cy="21" r="4" fill="#ffc6a7"/>
+          <path d="M8 34l10-9 8 7 6-5 10 9" fill="none" stroke="#8d79d4" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <p class="dz-title"><strong>Drag and drop</strong> a shelf photo here</p>
+        <p class="dz-sub">or <span class="link">browse your files</span></p>
+        <p class="dz-fmt">JPEG, PNG or WEBP &middot; up to 5 MB</p>
+      </div>
+
+      <div class="preview" id="preview" hidden>
+        <img id="preview-img" alt="Preview of the selected shelf photo">
+        <div class="preview-info">
+          <strong id="file-name" class="file-name"></strong>
+          <span id="file-info" class="muted"></span>
+          <span class="badge ok">Valid image</span>
+          <div class="preview-actions">
+            <button type="button" class="ghost sm" id="replace-btn">Replace</button>
+            <button type="button" class="ghost sm danger" id="remove-btn">Remove</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Camera mode -->
+    <div id="panel-camera" role="tabpanel" aria-labelledby="tab-camera" hidden>
+      <p class="camera-msg" id="camera-msg" role="status" aria-live="polite"></p>
+
+      <div class="camera-stage" id="camera-stage" hidden>
+        <video id="camera-video" autoplay playsinline muted></video>
+      </div>
+
+      <div class="camera-actions">
+        <button type="button" class="ghost" id="cam-start">Start camera</button>
+        <button type="button" id="cam-capture" hidden>Capture photo</button>
+        <button type="button" class="ghost" id="cam-switch" hidden>Switch camera</button>
+        <button type="button" class="ghost danger" id="cam-stop" hidden>Stop camera</button>
+      </div>
+
+      <div class="captured" id="captured" hidden>
+        <img id="captured-img" alt="Photo captured from the camera">
+        <div class="captured-side">
+          <strong>Photo captured</strong>
+          <span class="muted" id="captured-info"></span>
+          <div class="preview-actions">
+            <button type="button" id="cam-confirm">Confirm and run audit</button>
+            <button type="button" class="ghost" id="cam-retake">Retake</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p class="field-error" id="file-error" role="alert" hidden></p>
+  </div>
+
+  <!-- 3. Planogram -->
+  <div class="field">
+    <div class="field-head">
+      <label for="planogram"><span class="dot">3</span> Planogram (JSON)</label>
+      <div class="tools">
+        <button type="button" class="ghost sm" id="sample-btn">Load sample</button>
+        <button type="button" class="ghost sm" id="format-btn">Format</button>
+        <button type="button" class="ghost sm" id="clear-btn">Clear</button>
+      </div>
+    </div>
+
+    <div class="editor">
+      <pre class="hl" aria-hidden="true"><code id="hl-code"></code></pre>
+      <textarea id="planogram" name="planogram" rows="16" spellcheck="false" wrap="off" required>{{ planogram_text }}</textarea>
+    </div>
+
+    <div class="editor-status" id="plano-status" role="status" aria-live="polite"></div>
+    <p class="plano-warning" id="plano-mismatch" role="status" hidden></p>
+    <ul class="plano-errors" id="plano-errors"></ul>
+
+    <p class="hint">
+      List the products you expect in each row and how many <strong>facings</strong>
+      (units side by side at the front). Use any product names and categories you like. The
+      samples are only examples. <code>aliases</code> are optional other names for the same product.
+    </p>
+  </div>
+
+  <!-- 4. Go -->
+  <div class="cta-row">
+    <button type="submit" class="cta" id="audit-btn">Audit Shelf</button>
+    <p class="cta-hint" id="cta-hint">Add a shelf photo and a valid planogram to continue.</p>
+  </div>
+</form>
+
+<script type="application/json" id="samples-data">{{ samples|tojson }}</script>
+{% endblock %}
+
+{% block scripts %}<script src="/static/app.js?v={{ asset_version('app.js') }}" defer></script>{% endblock %}
